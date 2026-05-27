@@ -1,224 +1,229 @@
 import pandas as pd
+import numpy as np
 import os
+import joblib
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+
+from xgboost import XGBClassifier
+from lightgbm import LGBMClassifier
+from catboost import CatBoostClassifier
+
+from sklearn.metrics import accuracy_score
 
 # =========================================================
-# LOAD MAIN MATCH DATA
+# LOAD MASTER DATASET
 # =========================================================
 
-matches = pd.read_csv(
-    "data/processed/matches_cleaned.csv"
+dataset = pd.read_csv(
+    "data/final/master_training_dataset.csv"
 )
 
-print("Main Match Dataset Loaded!")
+print("Master Dataset Loaded!")
 
 # =========================================================
-# LOAD FEATURE FILES
+# SELECT FEATURES
 # =========================================================
 
-team_win = pd.read_csv(
-    "data/processed/features/team_win_percentage.csv"
-)
+model_data = dataset[[
+    'team1',
+    'team2',
+    'venue',
+    'toss_winner',
+    'toss_decision',
+    'team1_win_percentage',
+    'team2_win_percentage',
+    'team1_recent_form',
+    'team2_recent_form',
+    'team1_powerplay',
+    'team2_powerplay',
+    'team1_death_overs',
+    'team2_death_overs',
+    'match_winner'
+]].copy()
 
-recent_form = pd.read_csv(
-    "data/processed/advanced_features/recent_form.csv"
-)
-
-powerplay = pd.read_csv(
-    "data/processed/advanced_features/powerplay.csv"
-)
-
-death_overs = pd.read_csv(
-    "data/processed/advanced_features/death_overs.csv"
-)
-
-print("Feature Files Loaded!")
-
-# =========================================================
-# CREATE COPY
-# =========================================================
-
-dataset = matches.copy()
-
-# =========================================================
-# TEAM 1 FEATURES
-# =========================================================
-
-dataset = dataset.merge(
-    team_win,
-    left_on='team1',
-    right_on='team',
-    how='left'
-)
-
-dataset.rename(
-    columns={
-        'win_percentage': 'team1_win_percentage'
-    },
-    inplace=True
-)
-
-dataset.drop(columns=['team'], inplace=True)
-
-# =========================================================
-# TEAM 2 FEATURES
-# =========================================================
-
-dataset = dataset.merge(
-    team_win,
-    left_on='team2',
-    right_on='team',
-    how='left'
-)
-
-dataset.rename(
-    columns={
-        'win_percentage': 'team2_win_percentage'
-    },
-    inplace=True
-)
-
-dataset.drop(columns=['team'], inplace=True)
-
-# =========================================================
-# RECENT FORM - TEAM 1
-# =========================================================
-
-dataset = dataset.merge(
-    recent_form,
-    left_on='team1',
-    right_on='team',
-    how='left'
-)
-
-dataset.rename(
-    columns={
-        'recent_form_score': 'team1_recent_form'
-    },
-    inplace=True
-)
-
-dataset.drop(columns=['team'], inplace=True)
-
-# =========================================================
-# RECENT FORM - TEAM 2
-# =========================================================
-
-dataset = dataset.merge(
-    recent_form,
-    left_on='team2',
-    right_on='team',
-    how='left'
-)
-
-dataset.rename(
-    columns={
-        'recent_form_score': 'team2_recent_form'
-    },
-    inplace=True
-)
-
-dataset.drop(columns=['team'], inplace=True)
-
-# =========================================================
-# POWERPLAY FEATURES
-# =========================================================
-
-dataset = dataset.merge(
-    powerplay,
-    left_on='team1',
-    right_on='team',
-    how='left'
-)
-
-dataset.rename(
-    columns={
-        'avg_powerplay_runs': 'team1_powerplay'
-    },
-    inplace=True
-)
-
-dataset.drop(columns=['team'], inplace=True)
-
-dataset = dataset.merge(
-    powerplay,
-    left_on='team2',
-    right_on='team',
-    how='left'
-)
-
-dataset.rename(
-    columns={
-        'avg_powerplay_runs': 'team2_powerplay'
-    },
-    inplace=True
-)
-
-dataset.drop(columns=['team'], inplace=True)
-
-# =========================================================
-# DEATH OVERS FEATURES
-# =========================================================
-
-dataset = dataset.merge(
-    death_overs,
-    left_on='team1',
-    right_on='team',
-    how='left'
-)
-
-dataset.rename(
-    columns={
-        'avg_death_overs_runs': 'team1_death_overs'
-    },
-    inplace=True
-)
-
-dataset.drop(columns=['team'], inplace=True)
-
-dataset = dataset.merge(
-    death_overs,
-    left_on='team2',
-    right_on='team',
-    how='left'
-)
-
-dataset.rename(
-    columns={
-        'avg_death_overs_runs': 'team2_death_overs'
-    },
-    inplace=True
-)
-
-dataset.drop(columns=['team'], inplace=True)
+print("\nSelected Advanced Features!")
 
 # =========================================================
 # HANDLE MISSING VALUES
 # =========================================================
 
-dataset.fillna(0, inplace=True)
+model_data.fillna(0, inplace=True)
 
 # =========================================================
-# CREATE OUTPUT DIRECTORY
+# LABEL ENCODING
 # =========================================================
 
-os.makedirs(
-    "data/final",
-    exist_ok=True
+label_encoders = {}
+
+categorical_columns = [
+    'team1',
+    'team2',
+    'venue',
+    'toss_winner',
+    'toss_decision',
+    'match_winner'
+]
+
+for col in categorical_columns:
+
+    le = LabelEncoder()
+
+    model_data[col] = le.fit_transform(
+        model_data[col]
+    )
+
+    label_encoders[col] = le
+
+print("\nCategorical Encoding Completed!")
+
+# =========================================================
+# FEATURES & TARGET
+# =========================================================
+
+X = model_data.drop(
+    'match_winner',
+    axis=1
 )
 
+y = model_data['match_winner']
+
 # =========================================================
-# SAVE FINAL DATASET
+# TRAIN TEST SPLIT
 # =========================================================
 
-dataset.to_csv(
-    "data/final/master_training_dataset.csv",
-    index=False
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.2,
+    random_state=42
 )
 
-print("\nMaster Training Dataset Created Successfully!")
+print("\nTrain-Test Split Completed!")
 
-print("\nFinal Dataset Shape:")
-print(dataset.shape)
+# =========================================================
+# MODELS
+# =========================================================
 
-print("\nColumns:")
-print(dataset.columns)
+models = {
+
+    "Logistic Regression":
+        LogisticRegression(max_iter=1000),
+
+    "Random Forest":
+        RandomForestClassifier(
+            n_estimators=300,
+            random_state=42
+        ),
+
+    "XGBoost":
+        XGBClassifier(
+            n_estimators=300,
+            learning_rate=0.05,
+            max_depth=6,
+            random_state=42
+        ),
+
+    "LightGBM":
+        LGBMClassifier(
+            n_estimators=300,
+            learning_rate=0.05,
+            random_state=42
+        ),
+
+    "CatBoost":
+        CatBoostClassifier(
+            iterations=300,
+            learning_rate=0.05,
+            verbose=0
+        )
+}
+
+# =========================================================
+# TRAINING LOOP
+# =========================================================
+
+results = {}
+
+best_model = None
+best_accuracy = 0
+
+print("\nTraining Models...\n")
+
+for name, model in models.items():
+
+    print(f"Training {name}...")
+
+    model.fit(X_train, y_train)
+
+    predictions = model.predict(X_test)
+
+    accuracy = accuracy_score(
+        y_test,
+        predictions
+    )
+
+    results[name] = accuracy
+
+    print(f"{name} Accuracy: {accuracy:.4f}")
+
+    if accuracy > best_accuracy:
+
+        best_accuracy = accuracy
+        best_model = model
+        best_model_name = name
+
+# =========================================================
+# BEST MODEL
+# =========================================================
+
+print("\n==============================")
+print(f"BEST MODEL: {best_model_name}")
+print(f"BEST ACCURACY: {best_accuracy:.4f}")
+print("==============================")
+
+# =========================================================
+# SAVE BEST MODEL
+# =========================================================
+
+os.makedirs("models", exist_ok=True)
+
+joblib.dump(
+    best_model,
+    "models/best_model.pkl"
+)
+
+print("\nBest Model Saved Successfully!")
+
+# =========================================================
+# FEATURE IMPORTANCE
+# =========================================================
+
+if hasattr(best_model, "feature_importances_"):
+
+    feature_importance = pd.DataFrame({
+
+        'Feature': X.columns,
+        'Importance': best_model.feature_importances_
+
+    })
+
+    feature_importance = feature_importance.sort_values(
+        by='Importance',
+        ascending=False
+    )
+
+    print("\nTop Feature Importance:\n")
+
+    print(feature_importance)
+
+    feature_importance.to_csv(
+        "models/feature_importance.csv",
+        index=False
+    )
+
+print("\nAdvanced ML Training Completed Successfully!")
