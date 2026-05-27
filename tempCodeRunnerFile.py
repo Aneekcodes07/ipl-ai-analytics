@@ -1,183 +1,224 @@
 import pandas as pd
 import os
 
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
-
-from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier
-
-from sklearn.metrics import accuracy_score
-from sklearn.metrics import classification_report
-from sklearn.metrics import confusion_matrix
-
 # =========================================================
-# LOAD DATA
+# LOAD MAIN MATCH DATA
 # =========================================================
 
 matches = pd.read_csv(
     "data/processed/matches_cleaned.csv"
 )
 
-print("Dataset Loaded!")
+print("Main Match Dataset Loaded!")
 
 # =========================================================
-# SELECT IMPORTANT COLUMNS
+# LOAD FEATURE FILES
 # =========================================================
 
-model_data = matches[[
-    'team1',
-    'team2',
-    'venue',
-    'toss_winner',
-    'toss_decision',
-    'match_winner'
-]]
-
-print("\nSelected ML Columns!")
-
-# =========================================================
-# REMOVE MISSING VALUES
-# =========================================================
-
-model_data.dropna(inplace=True)
-
-# =========================================================
-# ENCODE CATEGORICAL FEATURES
-# =========================================================
-
-label_encoders = {}
-
-categorical_columns = [
-    'team1',
-    'team2',
-    'venue',
-    'toss_winner',
-    'toss_decision',
-    'match_winner'
-]
-
-for col in categorical_columns:
-
-    le = LabelEncoder()
-
-    model_data[col] = le.fit_transform(
-        model_data[col]
-    )
-
-    label_encoders[col] = le
-
-print("\nCategorical Encoding Completed!")
-
-# =========================================================
-# FEATURES & TARGET
-# =========================================================
-
-X = model_data.drop(
-    'match_winner',
-    axis=1
+team_win = pd.read_csv(
+    "data/processed/features/team_win_percentage.csv"
 )
 
-y = model_data['match_winner']
-
-# =========================================================
-# TRAIN TEST SPLIT
-# =========================================================
-
-X_train, X_test, y_train, y_test = train_test_split(
-    X,
-    y,
-    test_size=0.2,
-    random_state=42
+recent_form = pd.read_csv(
+    "data/processed/advanced_features/recent_form.csv"
 )
 
-print("\nTrain-Test Split Completed!")
-
-# =========================================================
-# LOGISTIC REGRESSION
-# =========================================================
-
-lr_model = LogisticRegression(
-    max_iter=1000
+powerplay = pd.read_csv(
+    "data/processed/advanced_features/powerplay.csv"
 )
 
-lr_model.fit(X_train, y_train)
-
-lr_predictions = lr_model.predict(X_test)
-
-lr_accuracy = accuracy_score(
-    y_test,
-    lr_predictions
+death_overs = pd.read_csv(
+    "data/processed/advanced_features/death_overs.csv"
 )
 
-print("\nLogistic Regression Accuracy:")
-print(lr_accuracy)
+print("Feature Files Loaded!")
 
 # =========================================================
-# RANDOM FOREST
+# CREATE COPY
 # =========================================================
 
-rf_model = RandomForestClassifier(
-    n_estimators=200,
-    random_state=42
+dataset = matches.copy()
+
+# =========================================================
+# TEAM 1 FEATURES
+# =========================================================
+
+dataset = dataset.merge(
+    team_win,
+    left_on='team1',
+    right_on='team',
+    how='left'
 )
 
-rf_model.fit(X_train, y_train)
-
-rf_predictions = rf_model.predict(X_test)
-
-rf_accuracy = accuracy_score(
-    y_test,
-    rf_predictions
+dataset.rename(
+    columns={
+        'win_percentage': 'team1_win_percentage'
+    },
+    inplace=True
 )
 
-print("\nRandom Forest Accuracy:")
-print(rf_accuracy)
+dataset.drop(columns=['team'], inplace=True)
 
 # =========================================================
-# MODEL COMPARISON
+# TEAM 2 FEATURES
 # =========================================================
 
-print("\nMODEL COMPARISON")
+dataset = dataset.merge(
+    team_win,
+    left_on='team2',
+    right_on='team',
+    how='left'
+)
 
-print(f"Logistic Regression: {lr_accuracy:.4f}")
-print(f"Random Forest: {rf_accuracy:.4f}")
+dataset.rename(
+    columns={
+        'win_percentage': 'team2_win_percentage'
+    },
+    inplace=True
+)
+
+dataset.drop(columns=['team'], inplace=True)
 
 # =========================================================
-# BEST MODEL
+# RECENT FORM - TEAM 1
 # =========================================================
 
-if rf_accuracy > lr_accuracy:
-    best_model = "Random Forest"
-else:
-    best_model = "Logistic Regression"
+dataset = dataset.merge(
+    recent_form,
+    left_on='team1',
+    right_on='team',
+    how='left'
+)
 
-print(f"\nBest Model: {best_model}")
+dataset.rename(
+    columns={
+        'recent_form_score': 'team1_recent_form'
+    },
+    inplace=True
+)
+
+dataset.drop(columns=['team'], inplace=True)
 
 # =========================================================
-# CLASSIFICATION REPORT
+# RECENT FORM - TEAM 2
 # =========================================================
 
-print("\nClassification Report:\n")
+dataset = dataset.merge(
+    recent_form,
+    left_on='team2',
+    right_on='team',
+    how='left'
+)
 
-print(
-    classification_report(
-        y_test,
-        rf_predictions
-    )
+dataset.rename(
+    columns={
+        'recent_form_score': 'team2_recent_form'
+    },
+    inplace=True
+)
+
+dataset.drop(columns=['team'], inplace=True)
+
+# =========================================================
+# POWERPLAY FEATURES
+# =========================================================
+
+dataset = dataset.merge(
+    powerplay,
+    left_on='team1',
+    right_on='team',
+    how='left'
+)
+
+dataset.rename(
+    columns={
+        'avg_powerplay_runs': 'team1_powerplay'
+    },
+    inplace=True
+)
+
+dataset.drop(columns=['team'], inplace=True)
+
+dataset = dataset.merge(
+    powerplay,
+    left_on='team2',
+    right_on='team',
+    how='left'
+)
+
+dataset.rename(
+    columns={
+        'avg_powerplay_runs': 'team2_powerplay'
+    },
+    inplace=True
+)
+
+dataset.drop(columns=['team'], inplace=True)
+
+# =========================================================
+# DEATH OVERS FEATURES
+# =========================================================
+
+dataset = dataset.merge(
+    death_overs,
+    left_on='team1',
+    right_on='team',
+    how='left'
+)
+
+dataset.rename(
+    columns={
+        'avg_death_overs_runs': 'team1_death_overs'
+    },
+    inplace=True
+)
+
+dataset.drop(columns=['team'], inplace=True)
+
+dataset = dataset.merge(
+    death_overs,
+    left_on='team2',
+    right_on='team',
+    how='left'
+)
+
+dataset.rename(
+    columns={
+        'avg_death_overs_runs': 'team2_death_overs'
+    },
+    inplace=True
+)
+
+dataset.drop(columns=['team'], inplace=True)
+
+# =========================================================
+# HANDLE MISSING VALUES
+# =========================================================
+
+dataset.fillna(0, inplace=True)
+
+# =========================================================
+# CREATE OUTPUT DIRECTORY
+# =========================================================
+
+os.makedirs(
+    "data/final",
+    exist_ok=True
 )
 
 # =========================================================
-# CONFUSION MATRIX
+# SAVE FINAL DATASET
 # =========================================================
 
-print("\nConfusion Matrix:\n")
-
-print(
-    confusion_matrix(
-        y_test,
-        rf_predictions
-    )
+dataset.to_csv(
+    "data/final/master_training_dataset.csv",
+    index=False
 )
 
-print("\nML Training Pipeline Completed Successfully!")
+print("\nMaster Training Dataset Created Successfully!")
+
+print("\nFinal Dataset Shape:")
+print(dataset.shape)
+
+print("\nColumns:")
+print(dataset.columns)
