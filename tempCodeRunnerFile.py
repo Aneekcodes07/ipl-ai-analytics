@@ -1,169 +1,183 @@
 import pandas as pd
 import os
 
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import classification_report
+from sklearn.metrics import confusion_matrix
+
 # =========================================================
 # LOAD DATA
 # =========================================================
 
-matches = pd.read_csv("data/processed/matches_cleaned.csv")
-deliveries = pd.read_csv("data/processed/deliveries_cleaned.csv")
+matches = pd.read_csv(
+    "data/processed/matches_cleaned.csv"
+)
 
-print("Datasets Loaded!\n")
-
-# =========================================================
-# SHOW COLUMNS
-# =========================================================
-
-print("MATCHES COLUMNS:")
-print(matches.columns)
-
-print("\nDELIVERIES COLUMNS:")
-print(deliveries.columns)
+print("Dataset Loaded!")
 
 # =========================================================
-# CREATE OUTPUT DIRECTORY
+# SELECT IMPORTANT COLUMNS
 # =========================================================
 
-os.makedirs("data/processed/advanced_features", exist_ok=True)
+model_data = matches[[
+    'team1',
+    'team2',
+    'venue',
+    'toss_winner',
+    'toss_decision',
+    'match_winner'
+]]
+
+print("\nSelected ML Columns!")
 
 # =========================================================
-# DETECT RUN COLUMN AUTOMATICALLY
+# REMOVE MISSING VALUES
 # =========================================================
 
-possible_run_columns = [
-    'batsman_runs',
-    'batter_runs',
-    'runs_off_bat',
-    'runs_of_bat',
-    'total_runs',
-    'runs'
+model_data.dropna(inplace=True)
+
+# =========================================================
+# ENCODE CATEGORICAL FEATURES
+# =========================================================
+
+label_encoders = {}
+
+categorical_columns = [
+    'team1',
+    'team2',
+    'venue',
+    'toss_winner',
+    'toss_decision',
+    'match_winner'
 ]
 
-RUN_COLUMN = None
+for col in categorical_columns:
 
-for col in possible_run_columns:
-    if col in deliveries.columns:
-        RUN_COLUMN = col
-        break
+    le = LabelEncoder()
 
-if RUN_COLUMN is None:
-    raise Exception(
-        "No valid runs column found in deliveries dataset!"
+    model_data[col] = le.fit_transform(
+        model_data[col]
     )
 
-print(f"\nUsing Run Column: {RUN_COLUMN}")
+    label_encoders[col] = le
+
+print("\nCategorical Encoding Completed!")
 
 # =========================================================
-# RECENT FORM SCORE
+# FEATURES & TARGET
 # =========================================================
 
-recent_matches = matches.sort_values(by='date')
-
-team_form = []
-
-teams = pd.concat([
-    recent_matches['team1'],
-    recent_matches['team2']
-]).unique()
-
-for team in teams:
-
-    team_games = recent_matches[
-        (recent_matches['team1'] == team) |
-        (recent_matches['team2'] == team)
-    ]
-
-    recent_5 = team_games.tail(5)
-
-    wins = (
-        recent_5['match_winner'] == team
-    ).sum()
-
-    form_score = wins / 5
-
-    team_form.append({
-        "team": team,
-        "recent_form_score": form_score
-    })
-
-team_form_df = pd.DataFrame(team_form)
-
-print("Recent Form Feature Created!")
-
-# =========================================================
-# CHASE SUCCESS RATE
-# =========================================================
-
-chasing_matches = matches[
-    matches['toss_decision'] == 'field'
-]
-
-chase_success = chasing_matches.groupby(
-    'match_winner'
-).size().reset_index(name='successful_chases')
-
-print("Chase Success Feature Created!")
-
-# =========================================================
-# POWERPLAY EFFICIENCY
-# =========================================================
-
-powerplay = deliveries[
-    deliveries['over'] <= 6
-]
-
-powerplay_runs = powerplay.groupby(
-    'batting_team'
-)[RUN_COLUMN].mean().reset_index()
-
-powerplay_runs.columns = [
-    'team',
-    'avg_powerplay_runs'
-]
-
-print("Powerplay Feature Created!")
-
-# =========================================================
-# DEATH OVER EFFICIENCY
-# =========================================================
-
-death_overs = deliveries[
-    deliveries['over'] >= 16
-]
-
-death_runs = death_overs.groupby(
-    'batting_team'
-)[RUN_COLUMN].mean().reset_index()
-
-death_runs.columns = [
-    'team',
-    'avg_death_overs_runs'
-]
-
-print("Death Overs Feature Created!")
-
-# =========================================================
-# SAVE FEATURES
-# =========================================================
-
-team_form_df.to_csv(
-    "data/processed/advanced_features/recent_form.csv",
-    index=False
+X = model_data.drop(
+    'match_winner',
+    axis=1
 )
 
-chase_success.to_csv(
-    "data/processed/advanced_features/chase_success.csv",
-    index=False
+y = model_data['match_winner']
+
+# =========================================================
+# TRAIN TEST SPLIT
+# =========================================================
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.2,
+    random_state=42
 )
 
-powerplay_runs.to_csv(
-    "data/processed/advanced_features/powerplay.csv",
-    index=False
+print("\nTrain-Test Split Completed!")
+
+# =========================================================
+# LOGISTIC REGRESSION
+# =========================================================
+
+lr_model = LogisticRegression(
+    max_iter=1000
 )
 
-death_runs.to_csv(
-    "data/processed/advanced_features/death_overs.csv",
-    index=False
+lr_model.fit(X_train, y_train)
+
+lr_predictions = lr_model.predict(X_test)
+
+lr_accuracy = accuracy_score(
+    y_test,
+    lr_predictions
 )
 
-print("\nAdvanced Feature Engineering Completed Successfully!")
+print("\nLogistic Regression Accuracy:")
+print(lr_accuracy)
+
+# =========================================================
+# RANDOM FOREST
+# =========================================================
+
+rf_model = RandomForestClassifier(
+    n_estimators=200,
+    random_state=42
+)
+
+rf_model.fit(X_train, y_train)
+
+rf_predictions = rf_model.predict(X_test)
+
+rf_accuracy = accuracy_score(
+    y_test,
+    rf_predictions
+)
+
+print("\nRandom Forest Accuracy:")
+print(rf_accuracy)
+
+# =========================================================
+# MODEL COMPARISON
+# =========================================================
+
+print("\nMODEL COMPARISON")
+
+print(f"Logistic Regression: {lr_accuracy:.4f}")
+print(f"Random Forest: {rf_accuracy:.4f}")
+
+# =========================================================
+# BEST MODEL
+# =========================================================
+
+if rf_accuracy > lr_accuracy:
+    best_model = "Random Forest"
+else:
+    best_model = "Logistic Regression"
+
+print(f"\nBest Model: {best_model}")
+
+# =========================================================
+# CLASSIFICATION REPORT
+# =========================================================
+
+print("\nClassification Report:\n")
+
+print(
+    classification_report(
+        y_test,
+        rf_predictions
+    )
+)
+
+# =========================================================
+# CONFUSION MATRIX
+# =========================================================
+
+print("\nConfusion Matrix:\n")
+
+print(
+    confusion_matrix(
+        y_test,
+        rf_predictions
+    )
+)
+
+print("\nML Training Pipeline Completed Successfully!")
